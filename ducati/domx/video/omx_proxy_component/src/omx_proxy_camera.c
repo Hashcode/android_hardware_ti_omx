@@ -128,6 +128,12 @@ static OMX_ERRORTYPE ComponentPrivateDeInit(OMX_IN OMX_HANDLETYPE hComponent)
 			TIMM_OSAL_Error("Mutex Obtain failed");
 		}
 
+#ifdef USE_MOTOROLA_CODE
+		if (numofInstance == 1)
+		{
+			DCC_DeInit();
+		}
+#endif
 		numofInstance = numofInstance - 1;
 
 		eOsalError = TIMM_OSAL_MutexRelease(cam_mutex);
@@ -432,7 +438,23 @@ OMX_ERRORTYPE OMX_ComponentInit(OMX_HANDLETYPE hComponent)
 			{
 				DOMX_DEBUG(" Error in DCC Init");
 			}
+#ifdef USE_MOTOROLA_CODE
+		}
 
+		numofInstance = numofInstance + 1;
+
+		/* Configure Ducati to use DCC buffer from A9 side
+		 *ONLY* if DCC_Init is successful. */
+		if (dcc_eError == OMX_ErrorNone)
+		{
+			dcc_eError = send_DCCBufPtr(hComponent);
+			if (dcc_eError != OMX_ErrorNone)
+			{
+				DOMX_DEBUG(" Error in Sending DCC Buf ptr");
+			}
+		}
+
+#else
 			/* Configure Ducati to use DCC buffer from A9 side
 			*ONLY* if DCC_Init is successful. */
 			if (dcc_eError == OMX_ErrorNone)
@@ -444,8 +466,9 @@ OMX_ERRORTYPE OMX_ComponentInit(OMX_HANDLETYPE hComponent)
 				}
 				DCC_DeInit();
 			}
-                }
-                numofInstance = numofInstance + 1;
+        }
+        numofInstance = numofInstance + 1;
+#endif
 		eOsalError = TIMM_OSAL_MutexRelease(cam_mutex);
 		PROXY_assert(eOsalError == TIMM_OSAL_ERR_NONE,
 		    OMX_ErrorInsufficientResources, "Mutex release failed");
@@ -503,7 +526,11 @@ OMX_ERRORTYPE DCC_Init(OMX_HANDLETYPE hComponent)
 			    OMX_ErrorInsufficientResources, "Malloc failed");
 			strcpy(dcc_dir[nIndex], DCC_PATH);
 			strcat(dcc_dir[nIndex], (OMX_STRING) param.sDCCURI);
+#ifdef USE_MOTOROLA_CODE
+            strcat(dcc_dir[nIndex], ".cfg");
+#else
 			strcat(dcc_dir[nIndex], "/");
+#endif
 		}
 	}
 	/* setting  back errortype OMX_ErrorNone */
@@ -514,6 +541,7 @@ OMX_ERRORTYPE DCC_Init(OMX_HANDLETYPE hComponent)
 
 	dccbuf_size = read_DCCdir(NULL, dcc_dir, nIndex);
 
+#ifndef USE_MOTOROLA_CODE
     // If there are no dcc files return error, so nothing is sent to ducati
     if (!dccbuf_size)
     {
@@ -521,7 +549,7 @@ OMX_ERRORTYPE DCC_Init(OMX_HANDLETYPE hComponent)
         eError = OMX_ErrorNoMore;
         goto EXIT;
     }
-
+#endif
 
 	PROXY_assert(dccbuf_size > 0, OMX_ErrorInsufficientResources,
 	    "No DCC files found, switching back to default DCC");
@@ -579,6 +607,31 @@ OMX_ERRORTYPE DCC_Init(OMX_HANDLETYPE hComponent)
 
 OMX_ERRORTYPE send_DCCBufPtr(OMX_HANDLETYPE hComponent)
 {
+#ifdef USE_MOTOROLA_CODE
+	OMX_TI_CONFIG_SHAREDBUFFER uribufparam;
+	OMX_ERRORTYPE eError = OMX_ErrorNone;
+
+	_PROXY_OMX_INIT_PARAM(&uribufparam, OMX_TI_CONFIG_SHAREDBUFFER);
+	uribufparam.nPortIndex = OMX_ALL;
+
+	DOMX_ENTER("ENTER");
+
+	uribufparam.nSharedBuffSize = dccbuf_size;
+	uribufparam.pSharedBuff = (OMX_U8 *) pMappedBuf;
+
+	DOMX_DEBUG("SYSLINK MAPPED ADDR:  0x%x sizeof buffer %d",
+	    uribufparam.pSharedBuff, uribufparam.nSharedBuffSize);
+
+	eError =
+	    OMX_SetParameter(hComponent, OMX_TI_IndexParamDccUriBuffer,
+	    &uribufparam);
+	if (eError != OMX_ErrorNone)
+	{
+		DOMX_ERROR(" Error in SetParam for DCC Uri Buffer 0x%x", eError);
+	}
+
+	DOMX_EXIT("EXIT");
+#else
 	OMX_TI_PARAM_DCCURIBUFFER uribufparam;
 	OMX_ERRORTYPE eError = OMX_ErrorNone;
 
@@ -608,6 +661,7 @@ OMX_ERRORTYPE send_DCCBufPtr(OMX_HANDLETYPE hComponent)
 
       EXIT:
 	DOMX_EXIT("EXIT");
+#endif
 	return eError;
 }
 
@@ -623,6 +677,147 @@ OMX_ERRORTYPE send_DCCBufPtr(OMX_HANDLETYPE hComponent)
  *
  */
 /* ===========================================================================*/
+#ifdef USE_MOTOROLA_CODE
+OMX_S32 read_DCCdir(OMX_PTR buffer, OMX_STRING * dcc_cfg_file, OMX_U16 numofURI)
+{
+    FILE* pDCCcfg;
+	OMX_S32 lSize;
+	OMX_S32 dcc_buf_size = 0;
+	struct dirent *dir;
+	OMX_U16 i = 0;
+	OMX_S32 ret = 0;
+	DOMX_ENTER("ENTER");
+	for (i = 0; i < numofURI - 1; i++)
+	{
+        pDCCcfg =  fopen(dcc_cfg_file[i], "rb");
+        DOMX_DEBUG(" Config file %s \n", dcc_cfg_file[i]);
+
+        if(pDCCcfg != NULL)
+        {
+            DIR *d;
+            OMX_STRING path[200];
+            size_t result;
+            while(fscanf (pDCCcfg, "%s", path) > 0)
+            {
+                DOMX_DEBUG(" Trying to open directory %s \n", path);
+
+                d = opendir(path);
+		if (d)
+		{
+                    FILE *pFile;
+                    OMX_STRING filename;
+                    char temp[200];
+                    OMX_STRING dotdot = "..";
+
+                    DOMX_DEBUG(" Read each filename \n");
+
+
+			/* read each filename */
+			while ((dir = readdir(d)) != NULL)
+			{
+				filename = dir->d_name;
+                        strcpy(temp, path);
+				strcat(temp, filename);
+
+                        DOMX_DEBUG(" Filename %s\n", temp);
+				if ((*filename != *dotdot))
+				{
+                    DOMX_DEBUG("\n\t DCC Profiles copying into buffer => %s mpu_addr: %p \n",
+					    temp, buffer);
+
+					pFile = fopen(temp, "rb");
+					if (pFile == NULL)
+					{
+                        DOMX_DEBUG("File open error\n");
+
+						ret = -1;
+					} else
+					{
+						fseek(pFile, 0, SEEK_END);
+						lSize = ftell(pFile);
+						rewind(pFile);
+						/* buffer is not NULL then copy all the DCC profiles into buffer
+						   else return the size of the DCC directory */
+						if (buffer)
+						{
+							// copy file into the buffer:
+							result =
+							    fread(buffer, 1,
+							    lSize, pFile);
+							if (result != lSize)
+							{
+                                DOMX_DEBUG("fread: Reading error\n");
+
+								ret = -1;
+							}
+							buffer =
+							    buffer + lSize;
+						}
+						/* getting the size of the total dcc files available in FS */
+						dcc_buf_size =
+						    dcc_buf_size + lSize;
+						fclose(pFile);
+					}
+				}
+			}
+			closedir(d);
+		}
+                else
+                {
+                    DOMX_DEBUG(" Trying to open file %s \n", path);
+                    FILE *pFile = fopen(path, "rb");
+                    if(pFile != NULL)
+                    {
+                        DOMX_DEBUG("\n\t DCC Profiles copying into buffer => %s mpu_addr: %p\n", path, buffer);
+
+                        fseek(pFile, 0, SEEK_END);
+                        lSize = ftell(pFile);
+                        rewind(pFile);
+                        /* buffer is not NULL then copy all the DCC profiles into buffer
+                           else return the size of the DCC directory */
+                        if (buffer)
+                        {
+                            // copy file into the buffer:
+                            result =
+                                fread(buffer, 1,
+                                lSize, pFile);
+                            if (result != lSize)
+                            {
+                                DOMX_DEBUG("fread: Reading error\n");
+
+                                ret = -1;
+                            }
+                            buffer =
+                                buffer + lSize;
+                        }
+                        /* getting the size of the total dcc files available in FS */
+                        dcc_buf_size =
+                            dcc_buf_size + lSize;
+			fclose(pFile);
+                    }
+                    else
+                    {
+                        //ERROR - no such directory or file present
+                        DOMX_DEBUG("No such directory or file present!!!\n");
+
+                    }
+                }
+            }
+            fclose(pDCCcfg);
+        }
+        else
+        {
+            DOMX_DEBUG("Config file open error\n");
+        }
+	}
+	if (ret == 0)
+		ret = dcc_buf_size;
+
+
+	DOMX_EXIT("return %d", ret);
+	return ret;
+}
+#else
 OMX_S32 read_DCCdir(OMX_PTR buffer, OMX_STRING * dir_path, OMX_U16 numofURI)
 {
 	FILE *pFile;
@@ -698,6 +893,7 @@ OMX_S32 read_DCCdir(OMX_PTR buffer, OMX_STRING * dir_path, OMX_U16 numofURI)
 	DOMX_EXIT("return %d", ret);
 	return ret;
 }
+#endif
 
 /* ===========================================================================*/
 /**

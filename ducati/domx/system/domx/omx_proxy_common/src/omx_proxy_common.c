@@ -443,6 +443,9 @@ static OMX_ERRORTYPE PROXY_FillBufferDone(OMX_HANDLETYPE hComponent,
 	OMX_ERRORTYPE eError = OMX_ErrorNone;
 	PROXY_COMPONENT_PRIVATE *pCompPrv = NULL;
 	OMX_COMPONENTTYPE *hComp = (OMX_COMPONENTTYPE *) hComponent;
+#ifdef USE_MOTOROLA_CODE
+        RPC_OMX_ERRORTYPE eRPCError = RPC_OMX_ErrorNone;
+#endif
 
 	OMX_U16 count;
 	OMX_BUFFERHEADERTYPE *pBufHdr = NULL;
@@ -481,16 +484,20 @@ static OMX_ERRORTYPE PROXY_FillBufferDone(OMX_HANDLETYPE hComponent,
 				    pMarkData)->hComponentActual;
 				TIMM_OSAL_Free(pMarkData);
 			}
-/*Invalidate call is being commented out for now since invalidate functionality
- * is currently broken in kernel. Workaround is to call flush in FTB. */
-#if 0
-			//Cache Invalidate in case of non tiler buffers only
-			if (pCompPrv->tBufList[count].pBufferActual !=
-			    pCompPrv->tBufList[count].pBufferToBeMapped)
-			{
-				eRPCError =
+
+#ifdef USE_MOTOROLA_CODE
+                        // Perform Cache Invalidate for video encoders only
+                        if(!strcmp(pCompPrv->cCompName,"OMX.TI.DUCATI1.VIDEO.MPEG4E") || 
+                           !strcmp(pCompPrv->cCompName,"OMX.TI.DUCATI1.VIDEO.H264E")) 
+                        {
+                           // Cache Invalidate in case of non tiler buffers only
+                           if ((pCompPrv->tBufList[count].pBufferActual !=
+			        pCompPrv->tBufList[count].pBufferToBeMapped) &&
+                                (pBufHdr->nFilledLen > 0))
+			   {
+                                eRPCError =
 				    RPC_InvalidateBuffer(pBufHdr->pBuffer,
-				    pBufHdr->nAllocLen, TARGET_CORE_ID);
+				    pBufHdr->nFilledLen, TARGET_CORE_ID);
 				if (eRPCError != RPC_OMX_ErrorNone)
 				{
 					TIMM_OSAL_Error
@@ -506,7 +513,8 @@ static OMX_ERRORTYPE PROXY_FillBufferDone(OMX_HANDLETYPE hComponent,
 					   handling it */
 					goto EXIT;
 				}
-			}
+			    }
+                        }
 #endif
 			break;
 		}
@@ -689,8 +697,9 @@ OMX_ERRORTYPE PROXY_EmptyThisBuffer(OMX_HANDLETYPE hComponent,
 				TARGET_CORE_ID);
                     }
 		}
+
 		PROXY_assert(eRPCError == RPC_OMX_ErrorNone,
-			OMX_ErrorHardware, "Flush Buffer failed");
+				OMX_ErrorHardware, "Flush Buffer failed");
 	}
 
 	if (pBufferHdr->hMarkTargetComponent != NULL)
@@ -853,12 +862,23 @@ static OMX_ERRORTYPE PROXY_FillThisBuffer(OMX_HANDLETYPE hComponent,
 /* Since invalidate functionality is broken, workaround is to call a cache
  * flush here. This will be removed once a fix for invalidate is available.*/
 	/*Flushing non tiler buffers only for now */
+#ifdef USE_MOTOROLA_CODE
+	if ((pCompPrv->tBufList[count].pBufferActual !=
+	    pCompPrv->tBufList[count].pBufferToBeMapped) &&
+            (pBufferHdr->nAllocLen > 0))
+#else
 	if (pCompPrv->tBufList[count].pBufferActual !=
 	    pCompPrv->tBufList[count].pBufferToBeMapped)
+#endif
 	{
 		eRPCError =
+#ifdef USE_MOTOROLA_CODE
+		    RPC_InvalidateBuffer(pBuffer, pBufferHdr->nAllocLen,
+		    TARGET_CORE_ID);
+#else
 		    RPC_FlushBuffer(pBuffer, pBufferHdr->nAllocLen,
 		    TARGET_CORE_ID);
+#endif
 		PROXY_assert(eRPCError == RPC_OMX_ErrorNone,
 		    OMX_ErrorHardware, "Flush Buffer failed");
 	}
@@ -1119,7 +1139,9 @@ static OMX_ERRORTYPE PROXY_UseBuffer(OMX_IN OMX_HANDLETYPE hComponent,
 		PROXY_assert(0, OMX_ErrorInsufficientResources, NULL);
 	}
 	pBufferHeader->pPlatformPrivate = pPlatformPrivate;
-
+#ifdef USE_MOTOROLA_CODE
+    pBufferHeader->nAllocLen = nSizeBytes;
+#endif
 	DOMX_DEBUG("Preparing buffer to Remote Core...");
 
 	pBufferHeader->pBuffer = pBuffer;
@@ -2676,3 +2698,4 @@ OMX_ERRORTYPE _RPC_IsProxyComponent(OMX_HANDLETYPE hComponent,
       EXIT:
 	return eError;
 }
+
