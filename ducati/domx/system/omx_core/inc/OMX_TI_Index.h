@@ -197,7 +197,20 @@ typedef enum OMX_TI_INDEXTYPE {
     /*H264 Encoder specific Indices*/
     OMX_TI_IndexParamAVCHRDBufferSizeSetting,   /**< reference: OMX_TI_VIDEO_PARAM_AVCHRDBUFFERSETTING */
     OMX_TI_IndexConfigAVCHRDBufferSizeSetting,   /**< reference: OMX_TI_VIDEO_CONFIG_AVCHRDBUFFERSETTING */
-    OMX_TI_IndexConfigFocusDistance              /**< reference: OMX_TI_CONFIG_FOCUSDISTANCETYPE */
+    OMX_TI_IndexConfigFocusDistance,              /**< reference: OMX_TI_CONFIG_FOCUSDISTANCETYPE */
+
+#ifdef USE_MOTOROLA_CODE
+    // Motorola specific - begin
+    // Note! This section must be placed at the bottom of this enum.
+    OMX_IndexConfigTargetExposure = ((OMX_INDEXTYPE)OMX_IndexVendorStartUnused + 0x2000),                       /**< reference: OMX_CONFIG_TARGETEXPOSURE */
+    OMX_IndexConfigColorBars,                            /**< reference: OMX_CONFIG_BOOLEANTYPE */
+    OMX_IndexConfigAFScore,                              /**< reference: OMX_CONFIG_AFScore */
+    OMX_IndexConfigMipiCounters,                          /**< reference: OMX_CONFIG_MIPICOUNTERS */
+	OMX_IndexConfigLedIntensity,						  /**< reference: OMX_CONFIG_LEDINTESITY */
+    OMX_IndexConfigOTPEeprom,							 /**< reference: OMX_CONFIG_OTPEEPROM */
+    // Motorola specific - end
+#endif
+
 } OMX_TI_INDEXTYPE;
 
 /*******************************************************************

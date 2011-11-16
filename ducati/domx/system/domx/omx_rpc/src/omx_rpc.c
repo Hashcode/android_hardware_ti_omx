@@ -143,7 +143,11 @@ OMX_S32 currentNumOfComps = 0;
 OMX_HANDLETYPE componentTable[MAX_NUM_COMPS_PER_PROCESS] = { 0 };
 
 /*Book keeping for tiler buffers*/
+#ifdef USE_MOTOROLA_CODE
+#define MAX_NUMBER_OF_TILER_BUFFERS_PER_PROCESS 128
+#else
 #define MAX_NUMBER_OF_TILER_BUFFERS_PER_PROCESS 20
+#endif
 OMX_U32 tilerBuffers[MAX_NUMBER_OF_TILER_BUFFERS_PER_PROCESS] = { 0 };
 
 OMX_PTR pTilerMutex = NULL;
@@ -985,8 +989,10 @@ RPC_OMX_ERRORTYPE _RPC_ClientCreate(OMX_STRING cComponentName)
 	    _RPC_GetRemoteDOMXVersion(rcmHndl, nGetDOMXVersionIdx, &nVer);
 	RPC_assert(eRPCError == RPC_OMX_ErrorNone, eRPCError,
 	    "Failed to get remote DOMX version");
-//	RPC_assert(nVer == DOMX_VERSION, RPC_OMX_ErrorUndefined,
-//	    "Version mismatch detected - A9 and Ducati DOMX versions not in sync");
+#ifdef USE_MOTOROLA_CODE
+	RPC_assert(nVer == DOMX_VERSION, RPC_OMX_ErrorUndefined,
+	    "Version mismatch detected - A9 and Ducati DOMX versions not in sync");
+#endif
 
 	/* Getting remote function indices */
 	DOMX_DEBUG("Getting Symbols");
