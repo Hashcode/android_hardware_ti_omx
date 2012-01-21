@@ -1,3 +1,4 @@
+ifeq ($(LEGACY_DOMX),true)
 ifeq ($(OMAP_ENHANCEMENT),true)
 ifeq ($(HARDWARE_OMX),true)
 ifeq ($(TARGET_BOARD_PLATFORM),omap4)
@@ -162,3 +163,4 @@ endif
 endif
 endif
 endif #OMAP_ENHANCEMENT
+endif #LEGACY_DOMX
